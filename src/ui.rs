@@ -2,42 +2,55 @@ use macroquad::prelude::*;
 use macroquad::rand;
 use crate::packet_manager::{PacketManager, IPPacketInfo};
 use std::collections::HashMap;
-use std::hash;
 use std::net::IpAddr;
 use std::sync::mpsc::Receiver;
+use crate::math::{Point, get_circle_point};
 
-const SPEED_PARTICLES: f32 = 1.0;
+const SPEED_PARTICLES: f32 = 0.02;
 const DELETE_DISTANCE: f32 = 3.0;
 
 struct NodeRenderData{
     ip: IpAddr,
-    x: f32,
-    y: f32
+    pos: Point
 }
 
 impl NodeRenderData{
     fn draw(&self){
-        draw_circle(self.x, self.y, 10.0, YELLOW);
+        draw_circle(self.pos.x, self.pos.y, 10.0, YELLOW);
     }
 }
 
 struct PacketRenderData{
-    source: IpAddr,
-    dest: IpAddr,
-    x: f32,
-    y: f32
+    src: Point,
+    pos: Point,
+    p_bazier: Point,
+    t_bazier: f32,
+    dest_ip: IpAddr
 }
 
 impl PacketRenderData{
+
+    fn new(packet_info: &IPPacketInfo, src_point: &Point, dst_point: &Point) -> Self{
+        let m_p = src_point.get_middle_point(dst_point);
+        let dist = src_point.distance(dst_point);
+        let p_bazier = get_circle_point(&m_p, rand::gen_range(0.0,6.0), rand::gen_range(0.1,dist*2.0));
+
+        PacketRenderData{
+            src: Point{x:src_point.x,y:src_point.y},
+            pos: Point{x:src_point.x,y:src_point.y},
+            p_bazier: p_bazier,
+            t_bazier: 0.0,
+            dest_ip: packet_info.dest
+        }
+
+    }
     fn draw(&self){
-        draw_circle(self.x, self.y, 2.0, RED);
+        draw_circle(self.pos.x, self.pos.y, 2.0, RED);
     }
 
-    fn distance(&self, x: f32, y: f32) -> f32{
-        let x_diff = self.x - x;
-        let y_diff = self.y - y;
-
-        return (x_diff.powf(2.0) + y_diff.powf(2.0)).sqrt();
+    fn update_bazier_position(&mut self, dest: &Point){
+        self.t_bazier += SPEED_PARTICLES;
+        self.pos.set_bazier_next_point(&self.src, &self.p_bazier, &dest, self.t_bazier);
     }
 }
 
@@ -61,58 +74,64 @@ impl UI {
         }
     }
 
-    fn add_node_if_not_exists<'a>(hash_map: &'a mut HashMap<IpAddr,NodeRenderData>, ip: &IpAddr) -> &'a NodeRenderData{
-        return hash_map.entry(*ip).or_insert(NodeRenderData{
-            ip: *ip,
-            x: rand::gen_range(0.0,screen_width()),
-            y: rand::gen_range(0.0,screen_height())
+    fn add_packet_nodes<'a>(hash_map: &'a mut HashMap<IpAddr,NodeRenderData>, ip_packet_info: &'a IPPacketInfo) -> (&'a NodeRenderData,&'a NodeRenderData){
+        hash_map.entry(ip_packet_info.source).or_insert(NodeRenderData{
+            ip: ip_packet_info.source,
+            pos: Point{
+                x:rand::gen_range(0.0,screen_width()),
+                y: rand::gen_range(0.0,screen_height())
+            }
         });
+
+        hash_map.entry(ip_packet_info.dest).or_insert(NodeRenderData{
+            ip: ip_packet_info.dest,
+            pos: Point{
+                x:rand::gen_range(0.0,screen_width()),
+                y: rand::gen_range(0.0,screen_height())
+            }
+        });
+
+        let src = hash_map.get(&ip_packet_info.source).unwrap();
+        let dst = hash_map.get(&ip_packet_info.dest).unwrap();
+
+        return (src, dst);
     }
 
-    fn add_packet_if_not_exists(vec_packet: &mut Vec<PacketRenderData>, packet_info: &IPPacketInfo, src_node: &NodeRenderData){
-        vec_packet.push(PacketRenderData{
-            source: packet_info.source,
-            dest: packet_info.dest,
-            x: src_node.x,
-            y: src_node.y
-        });
+    fn add_packet(vec_packet: &mut Vec<PacketRenderData>, packet_info: &IPPacketInfo, src_node: &NodeRenderData, dst_node: &NodeRenderData){
+        vec_packet.push(PacketRenderData::new(packet_info, &src_node.pos, &dst_node.pos));
     }
 
     fn listen_packets(&mut self){
         self.channel_recv.try_iter().for_each(|packet| {
             println!("Packet received");
-            UI::add_node_if_not_exists(&mut self.node_position_map,&packet.dest);
-            let src_node = UI::add_node_if_not_exists(&mut self.node_position_map ,&packet.source);
-            UI::add_packet_if_not_exists(&mut self.packet_list, &packet, &src_node);
+            let (src_node,dst_node)= UI::add_packet_nodes(&mut self.node_position_map,&packet);
+            UI::add_packet(&mut self.packet_list, &packet, &src_node, &dst_node);
             self.packet_manager.add_ip_packet(packet);
         }); 
     }
 
-    fn get_unit_vector(x: f32, y: f32) -> (f32,f32){
-        let magnitude = (x.powf(2.0) + y.powf(2.0)).sqrt();
-        return (x/magnitude, y/magnitude);
-    }
-
     fn update_particle_movement(node_position: &HashMap<IpAddr,NodeRenderData>, packet_list: &mut Vec<PacketRenderData>){
         for packet in packet_list.iter_mut(){
-            let dest_node = node_position.get(&packet.dest).unwrap();
-            let src_node = node_position.get(&packet.source).unwrap();
-
-            let x_diff = dest_node.x - packet.x;
-            let y_diff = dest_node.y - packet.y;
-
-            let (x_unit, y_unit) = UI::get_unit_vector(x_diff, y_diff);
-
-            let x_speed = x_unit * SPEED_PARTICLES;
-            let y_speed = y_unit * SPEED_PARTICLES;
-            
-            packet.x += x_speed;
-            packet.y += y_speed;
+            let dest_node = node_position.get(&packet.dest_ip).unwrap();
+            packet.update_bazier_position(&dest_node.pos);
+            //let dest_node = node_position.get(&packet.dest).unwrap();
+            //let src_node = node_position.get(&packet.source).unwrap();
+//
+            //let x_diff = dest_node.x - packet.x;
+            //let y_diff = dest_node.y - packet.y;
+//
+            //let (x_unit, y_unit) = UI::get_unit_vector(x_diff, y_diff);
+//
+            //let x_speed = x_unit * SPEED_PARTICLES;
+            //let y_speed = y_unit * SPEED_PARTICLES;
+            //
+            //packet.x += x_speed;
+            //packet.y += y_speed;
         }
 
         packet_list.retain(|packet| {
-            let dest_node = node_position.get(&packet.dest).unwrap();
-            let distance = packet.distance(dest_node.x, dest_node.y);
+            let dest_node = node_position.get(&packet.dest_ip).unwrap();
+            let distance = packet.pos.distance(&dest_node.pos);
             let result = distance > DELETE_DISTANCE;
             return result;
         });

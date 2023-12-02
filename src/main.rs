@@ -1,6 +1,7 @@
 mod packet_manager;
 mod ui;
 mod network_manager;
+mod math;
 
 use macroquad::prelude::*;
 use ui::UI;
