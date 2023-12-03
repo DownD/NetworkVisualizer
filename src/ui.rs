@@ -6,7 +6,7 @@ use std::net::IpAddr;
 use std::sync::mpsc::Receiver;
 use crate::math::{Point, get_circle_point};
 
-const SPEED_PARTICLES: f32 = 0.02;
+const SPEED_PARTICLES: f32 = 0.01;
 const DELETE_DISTANCE: f32 = 3.0;
 
 struct NodeRenderData{
@@ -33,7 +33,7 @@ impl PacketRenderData{
     fn new(packet_info: &IPPacketInfo, src_point: &Point, dst_point: &Point) -> Self{
         let m_p = src_point.get_middle_point(dst_point);
         let dist = src_point.distance(dst_point);
-        let p_bazier = get_circle_point(&m_p, rand::gen_range(0.0,6.0), rand::gen_range(0.1,dist*2.0));
+        let p_bazier = get_circle_point(&m_p, rand::gen_range(0.0,6.0), rand::gen_range(0.1,dist));
 
         PacketRenderData{
             src: Point{x:src_point.x,y:src_point.y},
@@ -103,7 +103,7 @@ impl UI {
 
     fn listen_packets(&mut self){
         self.channel_recv.try_iter().for_each(|packet| {
-            println!("Packet received");
+            println!("Packet received: from {} to {}", packet.source, packet.dest);
             let (src_node,dst_node)= UI::add_packet_nodes(&mut self.node_position_map,&packet);
             UI::add_packet(&mut self.packet_list, &packet, &src_node, &dst_node);
             self.packet_manager.add_ip_packet(packet);
@@ -139,6 +139,7 @@ impl UI {
 
     pub async fn run(&mut self) {
         clear_background(BLACK);
+        self.listen_packets();
 
         for node in self.node_position_map.values(){
             node.draw();
@@ -152,8 +153,6 @@ impl UI {
 
         //draw_text("text", x, y, font_size, color)
         draw_text(&format!("Valid packets: {}", self.packet_manager.get_valid_packet_count()), 10.0, 10.0, 20.0, WHITE);
-        
-        self.listen_packets();
         next_frame().await
     }
 }

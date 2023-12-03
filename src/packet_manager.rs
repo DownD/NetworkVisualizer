@@ -7,8 +7,7 @@ use std::rc::Rc;
 pub struct IPPacketInfo {
     pub source: IpAddr,
     pub dest: IpAddr,
-    pub payload_len: u16,
-    pub payload: Box<[u8]>,
+    pub payload_len: u16
 }
 
 pub struct Node{
