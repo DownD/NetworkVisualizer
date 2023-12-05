@@ -66,10 +66,11 @@ impl NetworkManager{
         
 
     pub fn listen_packets(&mut self){
-        match self.parse_new_packets() {
-            Ok(_) => (),
-            Err(e) => println!("Error: {:?}", e),
-        }
+        //match self.parse_new_packets() {
+        //    Ok(_) => (),
+        //    Err(e) => println!("Error: {:?}", e),
+        //}
+        self.parse_new_packets();
     }
 
     fn parse_new_packets(&mut self) -> Result<()>{

@@ -1,13 +1,18 @@
 use macroquad::prelude::*;
 use macroquad::rand;
+use std::time::Instant;
 use crate::packet_manager::{PacketManager, IPPacketInfo};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::mpsc::Receiver;
-use crate::math::{Point, get_circle_point};
+use crate::math::{Point,Vector};
 
-const SPEED_PARTICLES: f32 = 0.01;
-const DELETE_DISTANCE: f32 = 3.0;
+const DELETE_DISTANCE: f32 = 10.0;
+const INITIAL_PACKET_SIZE: usize = 100000;
+
+const MAX_PACKETS: u32 = 150;
+const ANGLE_LAUNCH: f32 = 0.1;
+const VELOCITY_LAUNCH: f32 = 2.0;
 
 struct NodeRenderData{
     ip: IpAddr,
@@ -23,34 +28,44 @@ impl NodeRenderData{
 struct PacketRenderData{
     src: Point,
     pos: Point,
-    p_bazier: Point,
-    t_bazier: f32,
-    dest_ip: IpAddr
+    dest: Point,
+    velocity: Vector,
+    dest_ip: IpAddr,
 }
 
 impl PacketRenderData{
-
-    fn new(packet_info: &IPPacketInfo, src_point: &Point, dst_point: &Point) -> Self{
-        let m_p = src_point.get_middle_point(dst_point);
-        let dist = src_point.distance(dst_point);
-        let p_bazier = get_circle_point(&m_p, rand::gen_range(0.0,6.0), rand::gen_range(0.1,dist));
+    fn new(packet_info: &IPPacketInfo, src_point: &Point, dst_point: &Point, start_velocity: f32, start_angle: f32) -> Self{
+        let unit_vector = src_point.get_unit_vector(dst_point);
+        let rotated_vector = unit_vector.rotate(rand::gen_range(-start_angle,start_angle));
+        let force_multiplier: f32 = start_velocity;
 
         PacketRenderData{
             src: Point{x:src_point.x,y:src_point.y},
             pos: Point{x:src_point.x,y:src_point.y},
-            p_bazier: p_bazier,
-            t_bazier: 0.0,
-            dest_ip: packet_info.dest
+            dest: Point{x:dst_point.x,y:dst_point.y},
+            dest_ip: packet_info.dest,
+            velocity: &rotated_vector * force_multiplier
         }
-
     }
+
     fn draw(&self){
-        draw_circle(self.pos.x, self.pos.y, 2.0, RED);
+        draw_circle(self.pos.x, self.pos.y, 1.5, RED);
     }
 
-    fn update_bazier_position(&mut self, dest: &Point){
-        self.t_bazier += SPEED_PARTICLES;
-        self.pos.set_bazier_next_point(&self.src, &self.p_bazier, &dest, self.t_bazier);
+    fn draw_debug(&self){
+        draw_line(self.pos.x, self.pos.y, self.dest.x, self.dest.y, 1.0, BLUE);
+        draw_line(self.pos.x, self.pos.y, self.pos.x+(self.velocity.x*10.0), self.pos.y+(self.velocity.y*10.0), 3.0, RED);
+        draw_line(self.src.x, self.src.y, self.pos.x, self.pos.y, 1.0, GREEN);
+    }
+    fn update_fixed(&mut self){
+        let vec_to_dest_unit = self.pos.get_unit_vector(&self.dest);
+        let vec_velocity_unit = self.velocity.get_unit_vector();
+        let dist_to_dest = self.pos.distance(&self.dest);
+        let angle = vec_to_dest_unit.angle(&vec_velocity_unit);
+        
+        self.velocity = self.velocity.rotate(angle/dist_to_dest);
+
+        self.pos += &self.velocity;
     }
 }
 
@@ -61,16 +76,32 @@ pub struct UI {
 
     node_position_map: HashMap<IpAddr,NodeRenderData>,
     packet_list: Vec<PacketRenderData>,
+
+    //Buttons
+    update: bool,
+    draw_debug: bool,
+    max_packets: u32,
+    
+    angle_launch: f32,
+    speed_launch: f32,
 }
 
 impl UI {
     pub fn new(channel_recv: Receiver<IPPacketInfo>) -> Self {
         rand::srand(macroquad::miniquad::date::now() as _);
+        let mut packet_list: Vec<PacketRenderData> = Vec::new();
+        packet_list.reserve(INITIAL_PACKET_SIZE);
+        
         UI{
             packet_manager:PacketManager::new(),
             channel_recv: channel_recv,
             node_position_map: HashMap::new(),
-            packet_list: Vec::new()
+            packet_list: packet_list,
+            update: true,
+            draw_debug: false,
+            max_packets: MAX_PACKETS,
+            angle_launch: ANGLE_LAUNCH,
+            speed_launch: VELOCITY_LAUNCH
         }
     }
 
@@ -97,47 +128,35 @@ impl UI {
         return (src, dst);
     }
 
-    fn add_packet(vec_packet: &mut Vec<PacketRenderData>, packet_info: &IPPacketInfo, src_node: &NodeRenderData, dst_node: &NodeRenderData){
-        vec_packet.push(PacketRenderData::new(packet_info, &src_node.pos, &dst_node.pos));
-    }
-
     fn listen_packets(&mut self){
         self.channel_recv.try_iter().for_each(|packet| {
-            println!("Packet received: from {} to {}", packet.source, packet.dest);
-            let (src_node,dst_node)= UI::add_packet_nodes(&mut self.node_position_map,&packet);
-            UI::add_packet(&mut self.packet_list, &packet, &src_node, &dst_node);
-            self.packet_manager.add_ip_packet(packet);
+            //println!("Packet received: from {} to {}", packet.source, packet.dest);
+            if self.update && self.packet_list.len() < self.max_packets as usize{
+                let (src_node,dst_node)= UI::add_packet_nodes(&mut self.node_position_map,&packet);
+                self.packet_list.push(PacketRenderData::new(&packet, &src_node.pos, &dst_node.pos, self.speed_launch, self.angle_launch));
+                self.packet_manager.add_ip_packet(packet);
+            }
         }); 
     }
 
-    fn update_particle_movement(node_position: &HashMap<IpAddr,NodeRenderData>, packet_list: &mut Vec<PacketRenderData>){
+    fn update_particle_movement(packet_list: &mut Vec<PacketRenderData>){
         for packet in packet_list.iter_mut(){
-            let dest_node = node_position.get(&packet.dest_ip).unwrap();
-            packet.update_bazier_position(&dest_node.pos);
-            //let dest_node = node_position.get(&packet.dest).unwrap();
-            //let src_node = node_position.get(&packet.source).unwrap();
-//
-            //let x_diff = dest_node.x - packet.x;
-            //let y_diff = dest_node.y - packet.y;
-//
-            //let (x_unit, y_unit) = UI::get_unit_vector(x_diff, y_diff);
-//
-            //let x_speed = x_unit * SPEED_PARTICLES;
-            //let y_speed = y_unit * SPEED_PARTICLES;
-            //
-            //packet.x += x_speed;
-            //packet.y += y_speed;
+            packet.update_fixed();
         }
 
-        packet_list.retain(|packet| {
-            let dest_node = node_position.get(&packet.dest_ip).unwrap();
-            let distance = packet.pos.distance(&dest_node.pos);
-            let result = distance > DELETE_DISTANCE;
-            return result;
+        packet_list.retain(|packet| {   
+            if packet.pos.distance(&packet.dest) < DELETE_DISTANCE{
+                return false;
+            }         
+            if packet.pos.get_unit_vector(&packet.dest).dot(&packet.src.get_unit_vector(&packet.dest)) < 0.0{
+                return true;
+            }
+            return true;
         });
     }
 
     pub async fn run(&mut self) {
+        let start_timestamp = Instant::now();
         clear_background(BLACK);
         self.listen_packets();
 
@@ -145,14 +164,35 @@ impl UI {
             node.draw();
         }
 
-        for packet in self.packet_list.iter(){
-            packet.draw();
-        }
-
-        UI::update_particle_movement(&self.node_position_map, &mut self.packet_list);
-
         //draw_text("text", x, y, font_size, color)
         draw_text(&format!("Valid packets: {}", self.packet_manager.get_valid_packet_count()), 10.0, 10.0, 20.0, WHITE);
+        egui_macroquad::ui(|egui_ctx| {
+            egui::Window::new("egui ❤ macroquad")
+            .show(egui_ctx, |ui| {
+                ui.add(egui::Slider::new(&mut self.max_packets, 0..=100000).logarithmic(true).text("Max Packets"));
+                ui.label(format!("Number of packets: {:?}", self.packet_list.len()));
+                ui.checkbox(&mut self.update, "Start/Stop particle update");
+                // Checkbox
+                ui.checkbox(&mut self.draw_debug, "Draw debug");
+                ui.add(egui::Slider::new(&mut self.angle_launch, 0.0..=1.57).text("Angle launch"));
+                ui.add(egui::Slider::new(&mut self.speed_launch, 0.0..=2.0).text("Speed launch"));
+            });
+            
+        });
+
+        if self.update{
+            UI::update_particle_movement(&mut self.packet_list);
+        }
+        for packet in self.packet_list.iter(){
+            if self.draw_debug{
+                packet.draw_debug();
+            }else{
+                packet.draw();
+            }
+        }
+
+        egui_macroquad::draw();
+        draw_text(&format!("FPS: {:?}", 1.0/start_timestamp.elapsed().as_secs_f64()), screen_width()-130.0, 30.0, 20.0, WHITE);
         next_frame().await
     }
 }
