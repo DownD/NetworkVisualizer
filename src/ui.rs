@@ -5,6 +5,7 @@ use crate::packet_manager::{PacketManager, IPPacketInfo};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::mpsc::Receiver;
+use egui::containers::popup;
 use crate::math::{Point,Vector};
 
 const DELETE_DISTANCE: f32 = 10.0;
@@ -16,12 +17,21 @@ const VELOCITY_LAUNCH: f32 = 2.0;
 
 struct NodeRenderData{
     ip: IpAddr,
-    pos: Point
+    pos: Point,
+    radius: f32,
 }
 
 impl NodeRenderData{
     fn draw(&self){
-        draw_circle(self.pos.x, self.pos.y, 10.0, YELLOW);
+        draw_circle(self.pos.x, self.pos.y, self.radius, YELLOW);
+    }
+
+    fn is_point_inside(&self, point: &Point) -> bool{
+        let distance = self.pos.distance(point);
+        if distance < self.radius{
+            return true;
+        }
+        return false;
     }
 }
 
@@ -30,11 +40,10 @@ struct PacketRenderData{
     pos: Point,
     dest: Point,
     velocity: Vector,
-    dest_ip: IpAddr,
 }
 
 impl PacketRenderData{
-    fn new(packet_info: &IPPacketInfo, src_point: &Point, dst_point: &Point, start_velocity: f32, start_angle: f32) -> Self{
+    fn new(src_point: &Point, dst_point: &Point, start_velocity: f32, start_angle: f32) -> Self{
         let unit_vector = src_point.get_unit_vector(dst_point);
         let rotated_vector = unit_vector.rotate(rand::gen_range(-start_angle,start_angle));
         let force_multiplier: f32 = start_velocity;
@@ -43,7 +52,6 @@ impl PacketRenderData{
             src: Point{x:src_point.x,y:src_point.y},
             pos: Point{x:src_point.x,y:src_point.y},
             dest: Point{x:dst_point.x,y:dst_point.y},
-            dest_ip: packet_info.dest,
             velocity: &rotated_vector * force_multiplier
         }
     }
@@ -111,7 +119,8 @@ impl UI {
             pos: Point{
                 x:rand::gen_range(0.0,screen_width()),
                 y: rand::gen_range(0.0,screen_height())
-            }
+            },
+            radius: 10.0
         });
 
         hash_map.entry(ip_packet_info.dest).or_insert(NodeRenderData{
@@ -119,7 +128,8 @@ impl UI {
             pos: Point{
                 x:rand::gen_range(0.0,screen_width()),
                 y: rand::gen_range(0.0,screen_height())
-            }
+            },
+            radius: 10.0
         });
 
         let src = hash_map.get(&ip_packet_info.source).unwrap();
@@ -130,10 +140,9 @@ impl UI {
 
     fn listen_packets(&mut self){
         self.channel_recv.try_iter().for_each(|packet| {
-            //println!("Packet received: from {} to {}", packet.source, packet.dest);
             if self.update && self.packet_list.len() < self.max_packets as usize{
                 let (src_node,dst_node)= UI::add_packet_nodes(&mut self.node_position_map,&packet);
-                self.packet_list.push(PacketRenderData::new(&packet, &src_node.pos, &dst_node.pos, self.speed_launch, self.angle_launch));
+                self.packet_list.push(PacketRenderData::new(&src_node.pos, &dst_node.pos, self.speed_launch, self.angle_launch));
                 self.packet_manager.add_ip_packet(packet);
             }
         }); 
@@ -149,22 +158,13 @@ impl UI {
                 return false;
             }         
             if packet.pos.get_unit_vector(&packet.dest).dot(&packet.src.get_unit_vector(&packet.dest)) < 0.0{
-                return true;
+                return false;
             }
             return true;
         });
     }
 
-    pub async fn run(&mut self) {
-        let start_timestamp = Instant::now();
-        clear_background(BLACK);
-        self.listen_packets();
-
-        for node in self.node_position_map.values(){
-            node.draw();
-        }
-
-        //draw_text("text", x, y, font_size, color)
+    fn draw_hud(&mut self, start_timestamp: Instant){
         draw_text(&format!("Valid packets: {}", self.packet_manager.get_valid_packet_count()), 10.0, 10.0, 20.0, WHITE);
         egui_macroquad::ui(|egui_ctx| {
             egui::Window::new("egui ❤ macroquad")
@@ -179,6 +179,18 @@ impl UI {
             });
             
         });
+        egui_macroquad::draw();
+        draw_text(&format!("FPS: {:?}", 1.0/start_timestamp.elapsed().as_secs_f64()), screen_width()-130.0, 30.0, 20.0, WHITE);
+    }
+
+    pub async fn run(&mut self) {
+        let start_timestamp = Instant::now();
+        clear_background(BLACK);
+        self.listen_packets();
+
+        for node in self.node_position_map.values(){
+            node.draw();
+        }
 
         if self.update{
             UI::update_particle_movement(&mut self.packet_list);
@@ -191,8 +203,7 @@ impl UI {
             }
         }
 
-        egui_macroquad::draw();
-        draw_text(&format!("FPS: {:?}", 1.0/start_timestamp.elapsed().as_secs_f64()), screen_width()-130.0, 30.0, 20.0, WHITE);
+        self.draw_hud(start_timestamp);
         next_frame().await
     }
 }
