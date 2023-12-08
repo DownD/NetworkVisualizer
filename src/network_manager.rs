@@ -1,5 +1,5 @@
 
-use crate::packet_manager::IPPacketInfo;
+use crate::data::IPPacketInfo;
 use etherparse::{PacketHeaders,IpHeader};
 use pcap::{Capture, Device, Active};
 use std::net::Ipv4Addr;
@@ -45,22 +45,20 @@ impl NetworkManager{
         return Device::list().ok()?.into_iter().find(|d| d.addresses.iter().any(|a| a.addr == ip));
     }
 
-    fn convert_to_ip_packet_info(network_header: &IpHeader, data: Box<[u8]>) -> IPPacketInfo{
+    fn convert_to_ip_packet_info(network_header: &IpHeader) -> IPPacketInfo{
         match network_header {
             IpHeader::Version4(ipv4header, _) => {
                 IPPacketInfo{
                     source: IpAddr::V4(ipv4header.source.into()),
-                    dest: IpAddr::V4(ipv4header.source.into()),
-                    payload_len: ipv4header.payload_len,
-                    payload: data
+                    dest: IpAddr::V4(ipv4header.destination.into()),
+                    payload_len: ipv4header.payload_len
                 }
             }
             IpHeader::Version6(ipv6header, _) => {
                 IPPacketInfo{
                     source: IpAddr::V6(ipv6header.source.into()),
                     dest: IpAddr::V6(ipv6header.destination.into()),
-                    payload_len: ipv6header.payload_length,
-                    payload: data
+                    payload_len: ipv6header.payload_length
                 }
             }
         }
@@ -68,10 +66,7 @@ impl NetworkManager{
         
 
     pub fn listen_packets(&mut self){
-        match self.parse_new_packets() {
-            Ok(_) => (),
-            Err(e) => println!("Error: {:?}", e),
-        }
+        self.parse_new_packets();
     }
 
     fn parse_new_packets(&mut self) -> Result<()>{
@@ -79,7 +74,7 @@ impl NetworkManager{
         while let Some(packet) = self.cap.next_packet().ok(){
             let ip_packet = PacketHeaders::from_ethernet_slice(&packet)?;
             let ip_header = ip_packet.ip.ok_or_else(|| anyhow!("No IP header found"))?;
-            let packet = NetworkManager::convert_to_ip_packet_info(&ip_header, packet.data.to_vec().into_boxed_slice());
+            let packet = NetworkManager::convert_to_ip_packet_info(&ip_header);
             self.sender.send(packet).unwrap();
         }
         

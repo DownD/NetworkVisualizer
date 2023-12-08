@@ -1,15 +1,28 @@
-mod packet_manager;
-mod ui;
-mod network_manager;
-
 use macroquad::prelude::*;
-use ui::UI;
+use ui::UISettings;
+use std::time::Instant;
 use std::sync::mpsc::channel;
-use packet_manager::IPPacketInfo;
 use network_manager::NetworkManager;
 use std::thread;
+use data::IPPacketInfo;
+use engine::{PhysicsEngine, GraphicsEngine};
 
-#[macroquad::main("GUI test")]
+pub mod data;
+pub mod entities;
+mod ui;
+mod network_manager;
+mod math;
+pub mod engine;
+
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "egui with macroquad".to_owned(),
+        high_dpi: true,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
     let (tx, rx) = channel::<IPPacketInfo>();
 
@@ -19,8 +32,17 @@ async fn main() {
             network_manager.listen_packets();
         }
     });
-    let mut ui = UI::new(rx);
+    let mut ui = UISettings{};
+    let mut engine = engine::Engine::new();
     loop{
-        ui.run().await;
+        let timestamp = Instant::now();
+        rx.try_iter().for_each(|packet| {
+            engine.add_packet(&packet);
+        });
+        clear_background(BLACK);
+        engine.update();
+        engine.draw();
+        ui.draw(timestamp, &mut engine);
+        next_frame().await
     };
 }

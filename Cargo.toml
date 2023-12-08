@@ -7,9 +7,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
+egui = "0.21.0"
 egui-macroquad = "0.15.0"
 etherparse = "0.13.0"
-macroquad = "0.4.4"
+macroquad = { version="0.3.25", default-features=false }
 pcap = "1.1.0"
 rand = "0.8.5"
 tokio = { version = "1.34.0", features = ["full"] }
