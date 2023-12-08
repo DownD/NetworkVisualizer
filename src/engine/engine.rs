@@ -5,12 +5,15 @@ use macroquad::prelude::*;
 use crate::math::Point;
 use crate::data::IPPacketInfo;
 use crate::engine::{EngineSettings, PhysicsEngine, GraphicsEngine};
-use crate::entities::{PacketGraphics, Entity, Node};
+use crate::entities::{PacketEntity, Entity, Node};
 
 pub struct Engine {
     settings: EngineSettings,
     node_position_map: HashMap<IpAddr,Node>,
-    packet_position_map: Vec<PacketGraphics>
+    packet_position_map: Vec<PacketEntity>,
+
+    picked_node: Option<IpAddr>,
+    tooltip_node: Option<IpAddr>,
 }
 
 
@@ -20,9 +23,9 @@ impl Engine {
         let settings = EngineSettings {
             update: true,
             draw_debug: false,
-            max_packets: 50000,
+            max_packets: 10000,
             
-            angle_launch: 0.2,
+            angle_launch: 0.1,
             speed_launch: 1.5,
             delete_distance: 8.0,
         };
@@ -30,13 +33,15 @@ impl Engine {
         let mut hashmap: HashMap<IpAddr,Node> = HashMap::new();
         hashmap.reserve(500);
 
-        let mut packet_vector: Vec<PacketGraphics> = Vec::new();
+        let mut packet_vector: Vec<PacketEntity> = Vec::new();
         packet_vector.reserve(settings.max_packets as usize);
 
         Engine{
             settings: settings,
             node_position_map: hashmap,
-            packet_position_map: packet_vector
+            packet_position_map: packet_vector,
+            picked_node: None,
+            tooltip_node: None,
         }
     }
 
@@ -46,6 +51,11 @@ impl Engine {
 
     pub fn get_settings(&mut self) -> &mut EngineSettings {
         return &mut self.settings;
+    }
+
+    fn move_node(&mut self, ip: &IpAddr, point: &Point){
+        self.node_position_map.get_mut(ip).unwrap().move_to(point);
+        self.packet_position_map.iter_mut().filter(|packet| packet.get_ip_dest() == ip).for_each(|packet| packet.set_destination(point));
     }
 
     fn get_screen_random_position() -> Point{
@@ -81,7 +91,7 @@ impl PhysicsEngine for Engine {
         }
 
         // Insert packet
-        self.packet_position_map.push(PacketGraphics::new(&source_pos,dest_pos,self.settings.speed_launch,self.settings.angle_launch));
+        self.packet_position_map.push(PacketEntity::new(packet,&source_pos,dest_pos,self.settings.speed_launch,self.settings.angle_launch));
     }
 
     fn update(&mut self) {
@@ -93,13 +103,36 @@ impl PhysicsEngine for Engine {
             packet.update();
         }
 
+        let mouse_pos = Point::new(mouse_position());
+
+        // Drag picked node
+        if is_mouse_button_down(MouseButton::Left) && self.picked_node.is_some(){
+            let ip = self.picked_node.unwrap();
+            let node = self.node_position_map.get_mut(&ip).unwrap();
+            self.move_node(&ip,&mouse_pos);
+        }else{
+            self.picked_node = None;
+        }
+        
+        // Set tooltip
+        self.tooltip_node = None;
+        for (ip,node) in self.node_position_map.iter_mut(){
+            if node.is_point_inside(&mouse_pos){
+                if is_mouse_button_down(MouseButton::Left){
+                    self.picked_node = Some(*ip);
+                }
+                self.tooltip_node = Some(*ip);
+                break;
+            }
+        }
+
         self.packet_position_map.retain(|packet| {   
             if packet.get_position().distance(&packet.get_destination()) < self.settings.delete_distance{
                 return false;
             }         
-            if packet.get_position().get_unit_vector(packet.get_destination()).dot(&packet.get_source().get_unit_vector(packet.get_destination())) < 0.0{
-                return false;
-            }
+            //if packet.get_position().get_unit_vector(packet.get_destination()).dot(&packet.get_source().get_unit_vector(packet.get_destination())) < 0.0{
+            //    return false;
+            //}
             return true;
         });
     }
@@ -115,12 +148,20 @@ impl GraphicsEngine for Engine {
         
         self.node_position_map.iter().for_each(|(_,node)| node.draw());
         self.packet_position_map.iter().for_each(|packet| packet.draw());
-
-        if !self.settings.draw_debug{
-            return;
+        
+        // Draw debug
+        if self.settings.draw_debug{
+            self.node_position_map.iter().for_each(|(_,node)| node.draw_debug());
+            self.packet_position_map.iter().for_each(|packet| packet.draw_debug());
         }
 
-        self.node_position_map.iter().for_each(|(_,node)| node.draw_debug());
-        self.packet_position_map.iter().for_each(|packet| packet.draw_debug());
+        // Display tooltip
+        if self.tooltip_node.is_some(){
+            egui_macroquad::ui(|egui_ctx| {
+                self.node_position_map.get(&self.tooltip_node.unwrap()).unwrap().draw_tooltip(egui_ctx);
+            });
+            egui_macroquad::draw();
+        }
+
     }
 }

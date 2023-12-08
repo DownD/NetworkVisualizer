@@ -83,6 +83,13 @@ impl AddAssign<&Vector> for Vector {
 
 
 impl Point{
+    pub fn new((x,y): (f32, f32)) -> Point{
+        Point{
+            x: x,
+            y: y,
+        }
+    }
+
     pub fn distance(&self, other: &Point) -> f32{
         let x_diff = self.x - other.x;
         let y_diff = self.y - other.y;
@@ -128,3 +135,22 @@ impl AddAssign<&Vector> for Point {
         self.y += v.y;
     }
 }
+
+pub fn convert_bytes_str(bytes: u64) -> String{
+    let mut bytes = bytes as f32;
+    let power = bytes.log(1024.0).floor() as u32;
+    bytes /= 1024.0_f32.powi(power as i32);
+
+    match power{
+        0 => return format!("{:.0} B", bytes),
+        1 => return format!("{:.2} KB", bytes),
+        2 => return format!("{:.2} MB", bytes),
+        3 => return format!("{:.2} GB", bytes),
+        4 => return format!("{:.2} TB", bytes),
+        5 => return format!("{:.2} PB", bytes),
+        6 => return format!("{:.2} EB", bytes),
+        7 => return format!("{:.2} ZB", bytes),
+        _ => return format!("{:.2} YB", bytes),
+    }
+}
+

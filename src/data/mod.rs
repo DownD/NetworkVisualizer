@@ -1,6 +1,8 @@
 use std::net::IpAddr;
 mod node_data;
+mod packet_data;   
 
+pub use packet_data::PacketData;
 pub use node_data::NodeData;
 
 #[derive(Debug, PartialEq, Eq)]

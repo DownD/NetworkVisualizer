@@ -12,7 +12,7 @@ impl UISettings {
         let settings = engine.get_settings();
         //draw_text(&format!("Valid packets: {}", engine.get_visible_packet_count()), 10.0, 10.0, 20.0, WHITE);
         egui_macroquad::ui(|egui_ctx| {
-            egui::Window::new("egui ❤ macroquad")
+            egui::Window::new("Settings")
             .show(egui_ctx, |ui| {
                 ui.add(egui::Slider::new(&mut settings.max_packets, 0..=100000).logarithmic(true).text("Max Packets"));
                 ui.label(format!("Number of packets: {:?}", packet_count));
