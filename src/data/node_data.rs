@@ -1,15 +1,6 @@
 use std::net::IpAddr;
 use std::collections::HashMap;
-use std::rc::Rc;
-use std::ops::{Deref, DerefMut};
-
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct IPPacketInfo {
-    pub source: IpAddr,
-    pub dest: IpAddr,
-    pub payload_len: u16
-}
+use crate::data::IPPacketInfo;
 
 pub struct Statistics{
     pub packet_count_recv: u32,
@@ -40,16 +31,16 @@ impl Statistics{
     }
 }
 
-pub struct Node{
+pub struct NodeData{
     pub ip: IpAddr,
     pub stats: Statistics,
     pub recv_from: HashMap<IpAddr, Statistics>,
     pub sent_to: HashMap<IpAddr, Statistics>,
 }
 
-impl Node{
-    fn new(ip: IpAddr) -> Node{
-        Node{
+impl NodeData{
+    pub fn new(ip: IpAddr) -> NodeData{
+        NodeData{
             ip: ip,
             stats: Statistics::new(),
             recv_from: HashMap::new(),
@@ -57,7 +48,7 @@ impl Node{
         }
     }
 
-    fn add_packet(&mut self, packet: &IPPacketInfo){
+    pub fn add_packet(&mut self, packet: &IPPacketInfo){
         if packet.source == self.ip{
             self.stats.packet_count_sent += 1;
             self.stats.packet_bytes_sent += packet.payload_len as u64;
@@ -74,32 +65,4 @@ impl Node{
         }
     }
     
-}
-
-pub struct PacketManager {
-    ip_packets: HashMap<IpAddr,Node>,
-    valid_packet_count: u64
-}
-
-impl PacketManager {
-    pub fn new() -> PacketManager{
-        PacketManager{
-            ip_packets: HashMap::new(),
-            valid_packet_count: 0
-        }
-    }
-
-    pub fn get_valid_packet_count(&self) -> u64{
-        self.valid_packet_count
-    }
-
-    pub fn add_ip_packet(&mut self, packet: IPPacketInfo){
-        let source_node = self.ip_packets.entry(packet.source).or_insert(Node::new(packet.source));
-        source_node.add_packet(&packet);
-
-        let dest_node = self.ip_packets.entry(packet.dest).or_insert(Node::new(packet.dest));
-        dest_node.add_packet(&packet);
-
-        self.valid_packet_count += 1;
-    }
 }

@@ -1,5 +1,5 @@
 
-use crate::packet_manager::IPPacketInfo;
+use crate::data::IPPacketInfo;
 use etherparse::{PacketHeaders,IpHeader};
 use pcap::{Capture, Device, Active};
 use std::net::Ipv4Addr;
@@ -66,10 +66,6 @@ impl NetworkManager{
         
 
     pub fn listen_packets(&mut self){
-        //match self.parse_new_packets() {
-        //    Ok(_) => (),
-        //    Err(e) => println!("Error: {:?}", e),
-        //}
         self.parse_new_packets();
     }
 

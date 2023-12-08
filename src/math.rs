@@ -1,5 +1,5 @@
-use std::ops::{Mul, Add, Sub, AddAssign};
-#[derive(Debug)]
+use std::ops::{Mul, Add, AddAssign};
+#[derive(Debug, Copy, Clone)]
 pub struct Point{
     pub x: f32,
     pub y: f32,
@@ -127,16 +127,4 @@ impl AddAssign<&Vector> for Point {
         self.x += v.x;
         self.y += v.y;
     }
-}
-
-pub fn get_circle_point(center: &Point, angle_rad: f32, radius: f32) -> Point{
-    let x = center.x + radius * angle_rad.cos();
-    let y = center.y + radius * angle_rad.sin();
-    return Point{x,y};
-}
-
-pub fn get_gravity_force(a: &Point, b: &Point, m1: f32, m2: f32, g:f32) -> Vector{
-    let force = g * m1 * m2 / (a.distance(b).powf(2.0));
-    let unit_vector = a.get_unit_vector(b);
-    return &unit_vector * force;
 }
