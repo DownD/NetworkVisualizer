@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use ui::UISettings;
+use ui::UI;
 use std::time::Instant;
 use std::sync::mpsc::channel;
 use network_manager::NetworkManager;
@@ -25,14 +25,15 @@ fn window_conf() -> Conf {
 #[macroquad::main(window_conf)]
 async fn main() {
     let (tx, rx) = channel::<IPPacketInfo>();
+    let mut ui = UI{};
+    let mut network_manager = NetworkManager::new(tx);
+    ui.draw_network_device_menu(&mut network_manager).await;
 
-    thread::spawn(|| {
-        let mut network_manager = NetworkManager::new(tx);
+    thread::spawn(move || {
         loop {
             network_manager.listen_packets();
         }
     });
-    let mut ui = UISettings{};
     let mut engine = engine::Engine::new();
     loop{
         let timestamp = Instant::now();
@@ -42,7 +43,7 @@ async fn main() {
         clear_background(BLACK);
         engine.update();
         engine.draw();
-        ui.draw(timestamp, &mut engine);
+        ui.draw_settings(timestamp, &mut engine);
         next_frame().await
     };
 }

@@ -110,7 +110,6 @@ impl PhysicsEngine for Engine {
         // Drag picked node
         if is_mouse_button_down(MouseButton::Left) && self.picked_node.is_some(){
             let ip = self.picked_node.unwrap();
-            let node = self.node_position_map.get_mut(&ip).unwrap();
             self.move_node(&ip,&mouse_pos);
         }else{
             self.picked_node = None;
@@ -131,10 +130,7 @@ impl PhysicsEngine for Engine {
         self.packet_position_map.retain(|packet| {   
             if packet.get_position().distance(&packet.get_destination()) < self.settings.delete_distance{
                 return false;
-            }         
-            //if packet.get_position().get_unit_vector(packet.get_destination()).dot(&packet.get_source().get_unit_vector(packet.get_destination())) < 0.0{
-            //    return false;
-            //}
+            }
             return true;
         });
     }
