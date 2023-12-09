@@ -28,6 +28,8 @@ impl Engine {
             angle_launch: 0.1,
             speed_launch: 1.5,
             delete_distance: 8.0,
+
+            draw_tooltip: true,
         };
 
         let mut hashmap: HashMap<IpAddr,Node> = HashMap::new();
@@ -156,7 +158,7 @@ impl GraphicsEngine for Engine {
         }
 
         // Display tooltip
-        if self.tooltip_node.is_some(){
+        if self.tooltip_node.is_some() && self.settings.draw_tooltip{
             egui_macroquad::ui(|egui_ctx| {
                 self.node_position_map.get(&self.tooltip_node.unwrap()).unwrap().draw_tooltip(egui_ctx);
             });

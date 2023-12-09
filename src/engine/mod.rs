@@ -13,7 +13,8 @@ pub struct EngineSettings{
     pub angle_launch: f32,
     pub speed_launch: f32,
 
-    pub delete_distance: f32
+    pub delete_distance: f32,
+    pub draw_tooltip: bool,
 }
 
 pub trait PhysicsEngine {

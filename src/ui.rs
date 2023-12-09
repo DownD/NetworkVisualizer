@@ -13,9 +13,11 @@ impl UISettings {
         //draw_text(&format!("Valid packets: {}", engine.get_visible_packet_count()), 10.0, 10.0, 20.0, WHITE);
         egui_macroquad::ui(|egui_ctx| {
             egui::Window::new("Settings")
+            .default_open(false)
             .show(egui_ctx, |ui| {
                 ui.add(egui::Slider::new(&mut settings.max_packets, 0..=100000).logarithmic(true).text("Max Packets"));
                 ui.label(format!("Number of packets: {:?}", packet_count));
+                ui.checkbox(&mut settings.draw_tooltip, "Draw tooltip");
                 ui.checkbox(&mut settings.update, "Start/Stop particle update");
                 // Checkbox
                 ui.checkbox(&mut settings.draw_debug, "Draw debug");
